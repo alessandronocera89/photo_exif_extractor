@@ -4,9 +4,14 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+from typing import Callable, TextIO
 
 from src.config import Config, list_source_photos
-from src.exif import extract_photo_date
+from src.exif import extract_photo_datetime
+from src.progress import ProgressBar
+from src.timestamps import apply_capture_times
+
+CHUNK_SIZE = 1024 * 1024
 
 
 @dataclass
@@ -41,26 +46,88 @@ def unique_destination(dest_dir: Path, filename: str) -> Path:
         n += 1
 
 
-def organize_photos(config: Config, run_date: date | None = None) -> RunResult:
+def copy_file(
+    src: Path,
+    dst: Path,
+    on_bytes: Callable[[int], None] | None = None,
+) -> None:
+    with src.open("rb") as source, dst.open("wb") as destination:
+        while True:
+            chunk = source.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            destination.write(chunk)
+            if on_bytes is not None:
+                on_bytes(len(chunk))
+    shutil.copystat(src, dst)
+
+
+def _file_weight(path: Path) -> int:
+    try:
+        return max(path.stat().st_size, 1)
+    except OSError:
+        return 1
+
+
+def organize_photos(
+    config: Config,
+    run_date: date | None = None,
+    *,
+    show_progress: bool = False,
+    progress_stream: TextIO | None = None,
+) -> RunResult:
     today = run_date or date.today()
     run_dir = config.output_dir / run_folder_name(config.output_prefix, today)
     run_dir.mkdir(parents=True, exist_ok=True)
+    photos = list_source_photos(config.source_dir, config.extensions)
+    weights = [_file_weight(path) for path in photos]
+    bar = ProgressBar(
+        total_files=len(photos),
+        total_bytes=sum(weights),
+        enabled=show_progress,
+        stream=progress_stream,
+    )
     result = RunResult()
-    for source in list_source_photos(config.source_dir, config.extensions):
-        result.files_seen += 1
-        folder = date_folder_name(
-            extract_photo_date(source), config.no_date_folder
-        )
-        dest_dir = run_dir / folder
-        destination = unique_destination(dest_dir, source.name)
-        try:
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-        except OSError as exc:
-            result.copy_errors.append(f"{source.name}: {exc}")
-            continue
-        if folder == config.no_date_folder:
-            result.no_date_count += 1
-        else:
-            result.copied_by_date[folder] = result.copied_by_date.get(folder, 0) + 1
+    bytes_done = 0
+    try:
+        for index, source in enumerate(photos):
+            result.files_seen += 1
+            weight = weights[index]
+            bar.update(index, bytes_done, source.name)
+            captured = extract_photo_datetime(source)
+            folder = date_folder_name(
+                captured.date() if captured is not None else None,
+                config.no_date_folder,
+            )
+            dest_dir = run_dir / folder
+            destination = unique_destination(dest_dir, source.name)
+            copied = 0
+
+            def on_chunk(n: int, _name: str = source.name) -> None:
+                nonlocal copied, bytes_done
+                copied += n
+                bytes_done += n
+                bar.update(index, bytes_done, _name)
+
+            try:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                copy_file(source, destination, on_chunk)
+            except OSError as exc:
+                bytes_done += max(weight - copied, 0)
+                result.copy_errors.append(f"{source.name}: {exc}")
+                bar.update(index + 1, bytes_done, source.name)
+                continue
+            if captured is not None:
+                try:
+                    apply_capture_times(destination, captured)
+                except OSError:
+                    pass
+            bytes_done += max(weight - copied, 0)
+            bar.update(index + 1, bytes_done, source.name)
+            if folder == config.no_date_folder:
+                result.no_date_count += 1
+            else:
+                result.copied_by_date[folder] = result.copied_by_date.get(folder, 0) + 1
+    finally:
+        bar.finish()
     return result

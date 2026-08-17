@@ -1,26 +1,26 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from PIL import Image
 
-from src.exif import extract_photo_date, parse_exif_datetime
+from src.exif import extract_photo_date, extract_photo_datetime, parse_exif_datetime
 from tests.helpers import make_heif, make_jpeg
 
 
 def test_parse_exif_datetime_standard():
-    assert parse_exif_datetime("2024:03:15 14:30:00") == date(2024, 3, 15)
+    assert parse_exif_datetime("2024:03:15 14:30:00") == datetime(2024, 3, 15, 14, 30, 0)
 
 
 def test_parse_exif_datetime_date_only():
-    assert parse_exif_datetime("2024:03:15") == date(2024, 3, 15)
+    assert parse_exif_datetime("2024:03:15") == datetime(2024, 3, 15, 0, 0, 0)
 
 
 def test_parse_exif_datetime_hyphens():
-    assert parse_exif_datetime("2024-03-15 14:30:00") == date(2024, 3, 15)
+    assert parse_exif_datetime("2024-03-15 14:30:00") == datetime(2024, 3, 15, 14, 30, 0)
 
 
 def test_parse_exif_datetime_bytes():
-    assert parse_exif_datetime(b"2024:03:15 14:30:00") == date(2024, 3, 15)
+    assert parse_exif_datetime(b"2024:03:15 14:30:00") == datetime(2024, 3, 15, 14, 30, 0)
 
 
 def test_parse_exif_datetime_invalid():
@@ -37,6 +37,7 @@ def test_extract_prefers_datetime_original(tmp_path: Path):
         datetime="2024:03:10 09:00:00",
     )
     assert extract_photo_date(path) == date(2024, 1, 10)
+    assert extract_photo_datetime(path) == datetime(2024, 1, 10, 9, 0, 0)
 
 
 def test_extract_falls_back_to_digitized(tmp_path: Path):

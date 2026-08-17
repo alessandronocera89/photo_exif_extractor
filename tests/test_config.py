@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from src.config import ConfigError, list_source_photos, load_config, parse_extensions
+from src.config import (
+    ConfigError,
+    list_source_photos,
+    load_config,
+    parse_extensions,
+    parse_folder_name,
+)
 
 
 def _write_env(path: Path, **values: str) -> Path:
@@ -22,8 +28,8 @@ def _valid_values(tmp_path: Path) -> dict[str, str]:
         "SOURCE_DIR": str(source),
         "OUTPUT_DIR": str(output),
         "EXTENSIONS": ".jpg,.jpeg,.heic,.heif,.png,.tiff,.tif",
-        "NO_DATE_FOLDER": "senza_data",
-        "OUTPUT_PREFIX": "estrazione_del_",
+        "NO_DATE_FOLDER": "no_date",
+        "OUTPUT_PREFIX": "extraction_",
     }
 
 
@@ -34,6 +40,14 @@ def test_parse_extensions_normalizes_case_and_dot():
 def test_parse_extensions_empty_raises():
     with pytest.raises(ConfigError, match="EXTENSIONS"):
         parse_extensions(" , ")
+
+
+def test_parse_folder_name_rejects_path_separators():
+    with pytest.raises(ConfigError, match="NO_DATE_FOLDER"):
+        parse_folder_name("../fuori", "NO_DATE_FOLDER")
+    with pytest.raises(ConfigError, match="OUTPUT_PREFIX"):
+        parse_folder_name("extraction/of_", "OUTPUT_PREFIX")
+    assert parse_folder_name("no_date", "NO_DATE_FOLDER") == "no_date"
 
 
 def test_list_source_photos_root_only_and_ignores_other_extensions(tmp_path: Path):
@@ -56,8 +70,8 @@ def test_load_config_success(tmp_path: Path):
     assert config.output_dir.is_dir()
     assert ".jpg" in config.extensions
     assert ".heic" in config.extensions
-    assert config.no_date_folder == "senza_data"
-    assert config.output_prefix == "estrazione_del_"
+    assert config.no_date_folder == "no_date"
+    assert config.output_prefix == "extraction_"
 
 
 def test_load_config_missing_file(tmp_path: Path):
@@ -87,7 +101,7 @@ def test_load_config_empty_source(tmp_path: Path):
     for child in source.iterdir():
         child.unlink()
     env = _write_env(tmp_path, **values)
-    with pytest.raises(ConfigError, match="Nessuna foto"):
+    with pytest.raises(ConfigError, match="No photos"):
         load_config(env)
 
 
@@ -126,9 +140,17 @@ def test_load_config_relative_paths_use_cwd(tmp_path: Path, monkeypatch: pytest.
         SOURCE_DIR="foto",
         OUTPUT_DIR="out",
         EXTENSIONS=".jpg",
-        NO_DATE_FOLDER="senza_data",
-        OUTPUT_PREFIX="estrazione_del_",
+        NO_DATE_FOLDER="no_date",
+        OUTPUT_PREFIX="extraction_",
     )
     config = load_config(env)
     assert config.source_dir == (tmp_path / "foto").resolve()
     assert config.output_dir == (tmp_path / "out").resolve()
+
+
+def test_load_config_rejects_path_in_no_date_folder(tmp_path: Path):
+    values = _valid_values(tmp_path)
+    values["NO_DATE_FOLDER"] = "../fuori"
+    env = _write_env(tmp_path, **values)
+    with pytest.raises(ConfigError, match="NO_DATE_FOLDER"):
+        load_config(env)

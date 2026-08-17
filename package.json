@@ -1,0 +1,21 @@
+{
+  "name": "photo-exif-extractor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Copy photos into folders by EXIF capture date",
+  "author": "Alessandro Nocera <alessandro.nocera89@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alessandronocera89/photo_exif_extractor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alessandronocera89/photo_exif_extractor/issues"
+  },
+  "homepage": "https://github.com/alessandronocera89/photo_exif_extractor#readme",
+  "scripts": {
+    "setup": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && (test -f .env || cp .env.example .env)",
+    "start": "test -x .venv/bin/python || (echo 'Run npm run setup first' >&2 && exit 1); .venv/bin/python -m src.main",
+    "extract": "npm start",
+    "test": "test -x .venv/bin/python || (echo 'Run npm run setup first' >&2 && exit 1); .venv/bin/pytest"
+  }
+}

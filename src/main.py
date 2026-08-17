@@ -8,15 +8,15 @@ from src.organizer import RunResult, organize_photos
 
 
 def print_summary(result: RunResult) -> None:
-    print(f"Foto analizzate: {result.files_seen}")
-    print("Copiate per data:")
+    print(f"Photos scanned: {result.files_seen}")
+    print("Copied by date:")
     if result.copied_by_date:
         for folder in sorted(result.copied_by_date):
             print(f"  {folder}: {result.copied_by_date[folder]}")
     else:
-        print("  (nessuna)")
-    print(f"Senza data: {result.no_date_count}")
-    print(f"Errori di copia: {len(result.copy_errors)}")
+        print("  (none)")
+    print(f"No date: {result.no_date_count}")
+    print(f"Copy errors: {len(result.copy_errors)}")
     for error in result.copy_errors:
         print(f"  - {error}")
 
@@ -27,7 +27,11 @@ def main(env_path: Path | None = None) -> int:
     except ConfigError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    result = organize_photos(config)
+    try:
+        result = organize_photos(config, show_progress=sys.stderr.isatty())
+    except OSError as exc:
+        print(f"Could not create the extraction folder: {exc}", file=sys.stderr)
+        return 1
     print_summary(result)
     return 0
 
