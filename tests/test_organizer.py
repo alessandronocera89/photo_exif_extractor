@@ -1,5 +1,7 @@
+import shutil
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -10,7 +12,7 @@ from src.organizer import (
     run_folder_name,
     unique_destination,
 )
-from tests.helpers import make_jpeg
+from tests.helpers import make_heif, make_jpeg
 
 
 def _config(tmp_path: Path, extensions: frozenset[str] | None = None) -> Config:
@@ -93,6 +95,61 @@ def test_ignores_disallowed_extensions(tmp_path: Path):
     assert result.files_seen == 1
     assert list((run_dir / "2024_03_15").iterdir())[0].name == "ok.jpg"
     assert not (run_dir / "notes.txt").exists()
+
+
+def test_groups_heif_by_exif_date(tmp_path: Path):
+    config = _config(tmp_path)
+    make_heif(config.source_dir / "iphone.heic", datetime_original="2024:06:20 10:00:00")
+    result = organize_photos(config, run_date=date(2026, 8, 17))
+    run_dir = config.output_dir / "estrazione_del_2026_08_17"
+    assert (run_dir / "2024_06_20" / "iphone.heic").is_file()
+    assert result.files_seen == 1
+    assert result.copied_by_date == {"2024_06_20": 1}
+    assert result.no_date_count == 0
+
+
+def test_copy_failure_records_error_and_continues(tmp_path: Path):
+    config = _config(tmp_path)
+    make_jpeg(config.source_dir / "ok.jpg", datetime_original="2024:03:15 10:00:00")
+    make_jpeg(config.source_dir / "fail.jpg", datetime_original="2024:03:16 10:00:00")
+    original_copy2 = shutil.copy2
+
+    def flaky_copy2(src, dst, *args, **kwargs):
+        if Path(src).name == "fail.jpg":
+            raise OSError("copy failed")
+        return original_copy2(src, dst, *args, **kwargs)
+
+    with patch("src.organizer.shutil.copy2", side_effect=flaky_copy2):
+        result = organize_photos(config, run_date=date(2026, 8, 17))
+
+    run_dir = config.output_dir / "estrazione_del_2026_08_17"
+    assert result.files_seen == 2
+    assert len(result.copy_errors) == 1
+    assert "fail.jpg" in result.copy_errors[0]
+    assert (run_dir / "2024_03_15" / "ok.jpg").is_file()
+    assert not (run_dir / "2024_03_16" / "fail.jpg").exists()
+
+
+def test_mkdir_failure_records_error_and_continues(tmp_path: Path):
+    config = _config(tmp_path)
+    make_jpeg(config.source_dir / "ok.jpg", datetime_original="2024:03:15 10:00:00")
+    make_jpeg(config.source_dir / "fail.jpg", datetime_original="2024:03:16 10:00:00")
+    original_mkdir = Path.mkdir
+
+    def flaky_mkdir(self, *args, **kwargs):
+        if self.name == "2024_03_16":
+            raise OSError("mkdir failed")
+        return original_mkdir(self, *args, **kwargs)
+
+    with patch.object(Path, "mkdir", flaky_mkdir):
+        result = organize_photos(config, run_date=date(2026, 8, 17))
+
+    run_dir = config.output_dir / "estrazione_del_2026_08_17"
+    assert result.files_seen == 2
+    assert len(result.copy_errors) == 1
+    assert "fail.jpg" in result.copy_errors[0]
+    assert (run_dir / "2024_03_15" / "ok.jpg").is_file()
+    assert not (run_dir / "2024_03_16" / "fail.jpg").exists()
 
 
 def test_second_run_same_day_reuses_folder(tmp_path: Path):

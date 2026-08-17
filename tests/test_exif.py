@@ -1,8 +1,10 @@
 from datetime import date
 from pathlib import Path
 
+from PIL import Image
+
 from src.exif import extract_photo_date, parse_exif_datetime
-from tests.helpers import make_jpeg
+from tests.helpers import make_heif, make_jpeg
 
 
 def test_parse_exif_datetime_standard():
@@ -63,3 +65,10 @@ def test_extract_corrupt_file_returns_none(tmp_path: Path):
     path = tmp_path / "broken.jpg"
     path.write_bytes(b"not an image")
     assert extract_photo_date(path) is None
+
+
+def test_extract_heif_datetime_original(tmp_path: Path):
+    path = make_heif(tmp_path / "iphone.heic", datetime_original="2024:06:20 10:00:00")
+    with Image.open(path) as image:
+        assert image.format == "HEIF"
+    assert extract_photo_date(path) == date(2024, 6, 20)

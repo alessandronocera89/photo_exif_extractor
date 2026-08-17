@@ -38,7 +38,7 @@ def parse_extensions(raw: str) -> frozenset[str]:
             ext = "." + ext
         items.append(ext)
     if not items:
-        raise ConfigError("EXTENSIONS is empty")
+        raise ConfigError("EXTENSIONS è vuoto")
     return frozenset(items)
 
 

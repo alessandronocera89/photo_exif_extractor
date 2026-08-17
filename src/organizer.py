@@ -52,9 +52,9 @@ def organize_photos(config: Config, run_date: date | None = None) -> RunResult:
             extract_photo_date(source), config.no_date_folder
         )
         dest_dir = run_dir / folder
-        dest_dir.mkdir(parents=True, exist_ok=True)
         destination = unique_destination(dest_dir, source.name)
         try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
         except OSError as exc:
             result.copy_errors.append(f"{source.name}: {exc}")
