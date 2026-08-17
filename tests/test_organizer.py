@@ -13,7 +13,7 @@ from src.organizer import (
     run_folder_name,
     unique_destination,
 )
-from tests.helpers import make_heif, make_jpeg
+from tests.helpers import make_heif, make_jpeg, make_mp4
 
 
 def _config(tmp_path: Path, extensions: frozenset[str] | None = None) -> Config:
@@ -165,11 +165,44 @@ def test_second_run_same_day_reuses_folder(tmp_path: Path):
     assert (run_dir / "2024_03_16" / "b.jpg").is_file()
 
 
+def test_photo_and_video_share_date_folder(tmp_path: Path):
+    config = _config(tmp_path, extensions=frozenset({".jpg", ".mp4"}))
+    make_jpeg(config.source_dir / "a.jpg", datetime_original="2024:03:15 10:00:00")
+    make_mp4(config.source_dir / "b.mp4", day="2024-03-15 11:00:00")
+    result = organize_photos(config, run_date=date(2026, 8, 17))
+    folder = config.output_dir / "extraction_2026_08_17" / "2024_03_15"
+    assert (folder / "a.jpg").is_file()
+    assert (folder / "b.mp4").is_file()
+    assert result.copied_by_date == {"2024_03_15": 2}
+
+
+def test_video_without_metadata_goes_to_no_date(tmp_path: Path):
+    config = _config(tmp_path, extensions=frozenset({".mp4"}))
+    make_mp4(config.source_dir / "clip.mp4")
+    result = organize_photos(config, run_date=date(2026, 8, 17))
+    dest = config.output_dir / "extraction_2026_08_17" / "no_date" / "clip.mp4"
+    assert dest.is_file()
+    assert result.no_date_count == 1
+
+
 def test_copied_file_uses_exif_capture_time(tmp_path: Path):
     config = _config(tmp_path)
     make_jpeg(config.source_dir / "a.jpg", datetime_original="2024:03:15 14:30:00")
     organize_photos(config, run_date=date(2026, 8, 17))
     dest = config.output_dir / "extraction_2026_08_17" / "2024_03_15" / "a.jpg"
+    expected = datetime(2024, 3, 15, 14, 30, 0).timestamp()
+    stat = dest.stat()
+    assert abs(stat.st_mtime - expected) < 2
+    birthtime = getattr(stat, "st_birthtime", None)
+    if birthtime is not None:
+        assert abs(birthtime - expected) < 2
+
+
+def test_copied_video_uses_capture_time(tmp_path: Path):
+    config = _config(tmp_path, extensions=frozenset({".mp4"}))
+    make_mp4(config.source_dir / "clip.mp4", day="2024-03-15 14:30:00")
+    organize_photos(config, run_date=date(2026, 8, 17))
+    dest = config.output_dir / "extraction_2026_08_17" / "2024_03_15" / "clip.mp4"
     expected = datetime(2024, 3, 15, 14, 30, 0).timestamp()
     stat = dest.stat()
     assert abs(stat.st_mtime - expected) < 2

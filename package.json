@@ -2,7 +2,7 @@
   "name": "photo-exif-extractor",
   "version": "1.0.0",
   "private": true,
-  "description": "Copy photos into folders by EXIF capture date",
+  "description": "Copy photos and videos into folders by capture date",
   "author": "Alessandro Nocera <alessandro.nocera89@gmail.com>",
   "repository": {
     "type": "git",

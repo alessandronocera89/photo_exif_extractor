@@ -101,7 +101,7 @@ def test_load_config_empty_source(tmp_path: Path):
     for child in source.iterdir():
         child.unlink()
     env = _write_env(tmp_path, **values)
-    with pytest.raises(ConfigError, match="No photos"):
+    with pytest.raises(ConfigError, match="No files"):
         load_config(env)
 
 

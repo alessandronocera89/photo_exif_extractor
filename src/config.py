@@ -90,7 +90,7 @@ def load_config(env_path: Path | None = None) -> Config:
     photos = list_source_photos(source_dir, extensions)
     if not photos:
         raise ConfigError(
-            f"No photos with an allowed extension in SOURCE_DIR: {source_dir}"
+            f"No files with an allowed extension in SOURCE_DIR: {source_dir}"
         )
 
     try:

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, TextIO
 
 from src.config import Config, list_source_photos
-from src.exif import extract_photo_datetime
+from src.media import extract_capture_datetime
 from src.progress import ProgressBar
 from src.timestamps import apply_capture_times
 
@@ -94,7 +94,7 @@ def organize_photos(
             result.files_seen += 1
             weight = weights[index]
             bar.update(index, bytes_done, source.name)
-            captured = extract_photo_datetime(source)
+            captured = extract_capture_datetime(source)
             folder = date_folder_name(
                 captured.date() if captured is not None else None,
                 config.no_date_folder,

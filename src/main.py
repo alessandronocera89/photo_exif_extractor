@@ -8,7 +8,7 @@ from src.organizer import RunResult, organize_photos
 
 
 def print_summary(result: RunResult) -> None:
-    print(f"Photos scanned: {result.files_seen}")
+    print(f"Files scanned: {result.files_seen}")
     print("Copied by date:")
     if result.copied_by_date:
         for folder in sorted(result.copied_by_date):

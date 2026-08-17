@@ -32,7 +32,7 @@ def test_main_success_copies_and_returns_zero(tmp_path: Path, capsys):
     env = _write_env(tmp_path, source, output)
     assert main(env) == 0
     captured = capsys.readouterr()
-    assert "Photos scanned: 1" in captured.out
+    assert "Files scanned: 1" in captured.out
     assert "2024_03_15" in captured.out
 
 
@@ -40,7 +40,7 @@ def test_main_missing_env_returns_one(tmp_path: Path, capsys):
     assert main(tmp_path / "nope.env") == 1
     captured = capsys.readouterr()
     assert captured.err
-    assert "Photos scanned" not in captured.out
+    assert "Files scanned" not in captured.out
 
 
 def test_main_empty_source_returns_one(tmp_path: Path, capsys):
@@ -51,8 +51,8 @@ def test_main_empty_source_returns_one(tmp_path: Path, capsys):
     env = _write_env(tmp_path, source, output)
     assert main(env) == 1
     captured = capsys.readouterr()
-    assert "No photos" in captured.err
-    assert "Photos scanned" not in captured.out
+    assert "No files" in captured.err
+    assert "Files scanned" not in captured.out
 
 
 def test_print_summary_includes_counts(capsys):
@@ -64,7 +64,7 @@ def test_print_summary_includes_counts(capsys):
     )
     print_summary(result)
     text = capsys.readouterr().out
-    assert "Photos scanned: 3" in text
+    assert "Files scanned: 3" in text
     assert "2024_03_15: 2" in text
     assert "No date: 1" in text
     assert "x.jpg: boom" in text

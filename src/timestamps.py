@@ -8,11 +8,21 @@ from datetime import datetime
 from pathlib import Path
 
 
+WINDOWS_EPOCH_100NS = 116444736000000000
+
+
 def apply_capture_times(path: Path, captured: datetime) -> None:
     timestamp = captured.timestamp()
     os.utime(path, (timestamp, timestamp))
     if sys.platform == "darwin":
         _set_macos_creation_time(path, timestamp)
+    elif sys.platform == "win32":
+        _set_windows_creation_time(path, timestamp)
+
+
+def _unix_to_windows_filetime(timestamp: float) -> tuple[int, int]:
+    value = int(round(timestamp * 10_000_000)) + WINDOWS_EPOCH_100NS
+    return value & 0xFFFFFFFF, (value >> 32) & 0xFFFFFFFF
 
 
 def _set_macos_creation_time(path: Path, timestamp: float) -> None:
@@ -65,3 +75,51 @@ def _set_macos_creation_time(path: Path, timestamp: float) -> None:
     )
     if result != 0:
         return
+
+
+def _set_windows_creation_time(path: Path, timestamp: float) -> None:
+    kernel32 = ctypes.WinDLL("kernel32", use_errno=False)
+    file_write_attributes = 0x0100
+    open_existing = 3
+    file_share_read = 0x00000001
+    file_share_write = 0x00000002
+    invalid_handle = ctypes.c_void_p(-1).value
+
+    class FILETIME(ctypes.Structure):
+        _fields_ = [("dwLowDateTime", ctypes.c_uint32), ("dwHighDateTime", ctypes.c_uint32)]
+
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        ctypes.c_wchar_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+    ]
+    create_file.restype = ctypes.c_void_p
+    handle = create_file(
+        str(path),
+        file_write_attributes,
+        file_share_read | file_share_write,
+        None,
+        open_existing,
+        0,
+        None,
+    )
+    if handle == invalid_handle:
+        return
+    try:
+        low, high = _unix_to_windows_filetime(timestamp)
+        ctime = FILETIME(low, high)
+        kernel32.SetFileTime.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ]
+        kernel32.SetFileTime(handle, ctypes.byref(ctime), None, None)
+    finally:
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle(handle)
