@@ -1,6 +1,18 @@
 import io
 
-from src.progress import ProgressBar, format_bytes
+from src.progress import ProgressBar, clip_name, format_bytes
+
+
+def test_clip_name_keeps_short_names():
+    assert clip_name("small.jpg") == "small.jpg"
+
+
+def test_clip_name_keeps_the_end_of_long_relative_paths():
+    name = "vacanze/Kyoto/giorno2/album/IMG_002.mov"
+    clipped = clip_name(name, limit=24)
+    assert clipped.startswith("...")
+    assert clipped.endswith("IMG_002.mov")
+    assert len(clipped) == 24
 
 
 def test_format_bytes_units():

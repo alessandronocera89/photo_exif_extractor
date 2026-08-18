@@ -16,6 +16,15 @@ def format_bytes(n: int) -> str:
     return f"{size:.1f} GB"
 
 
+def clip_name(name: str, limit: int = 40) -> str:
+    text = name.replace("\n", " ")
+    if len(text) <= limit:
+        return text
+    ellipsis = "..."
+    keep = max(limit - len(ellipsis), 0)
+    return ellipsis + text[-keep:]
+
+
 class ProgressBar:
     def __init__(
         self,
@@ -49,7 +58,7 @@ class ProgressBar:
         filled = int(width * ratio)
         bar = "#" * filled + "-" * (width - filled)
         percent = int(ratio * 100)
-        name = current_name.replace("\n", " ")[:40]
+        name = clip_name(current_name)
         line = (
             f"[{bar}] {percent:3d}%  {files_done}/{self.total_files}  "
             f"{format_bytes(bytes_done)} / {format_bytes(self.total_bytes)}  {name}"

@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import pytest
 
@@ -8,6 +9,9 @@ from src.config import (
     load_config,
     parse_extensions,
     parse_folder_name,
+    parse_group_by,
+    source_folder_name,
+    source_skip_dirs,
 )
 
 
@@ -50,9 +54,26 @@ def test_parse_folder_name_rejects_path_separators():
     assert parse_folder_name("no_date", "NO_DATE_FOLDER") == "no_date"
 
 
-def test_list_source_photos_root_only_and_ignores_other_extensions(tmp_path: Path):
+def test_parse_group_by_defaults_and_normalizes():
+    assert parse_group_by(None) == "date"
+    assert parse_group_by(" ") == "date"
+    assert parse_group_by("DATE") == "date"
+    assert parse_group_by(" tree ") == "tree"
+
+
+def test_parse_group_by_rejects_unknown():
+    with pytest.raises(ConfigError, match="GROUP_BY"):
+        parse_group_by("flat")
+
+
+def test_source_folder_name_rejects_empty():
+    with pytest.raises(ConfigError, match="SOURCE_DIR"):
+        source_folder_name(Path("/"))
+
+
+def test_list_source_photos_includes_nested_and_ignores_other_extensions(tmp_path: Path):
     source = tmp_path / "foto"
-    nested = source / "sub"
+    nested = source / "sub" / "deep"
     nested.mkdir(parents=True)
     (source / "a.jpg").write_bytes(b"x")
     (source / "b.TXT").write_bytes(b"x")
@@ -60,7 +81,120 @@ def test_list_source_photos_root_only_and_ignores_other_extensions(tmp_path: Pat
     (nested / "d.jpg").write_bytes(b"x")
     photos = list_source_photos(source, frozenset({".jpg", ".heic"}))
     names = {p.name for p in photos}
-    assert names == {"a.jpg", "c.HEIC"}
+    assert names == {"a.jpg", "c.HEIC", "d.jpg"}
+    rels = [p.relative_to(source).as_posix() for p in photos]
+    assert rels == ["a.jpg", "c.HEIC", "sub/deep/d.jpg"]
+
+
+def test_list_source_photos_skips_output_inside_source(tmp_path: Path):
+    source = tmp_path / "foto"
+    nested = source / "album"
+    output = source / "out"
+    run_dir = output / "extraction_foto"
+    nested.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    (nested / "keep.jpg").write_bytes(b"x")
+    (run_dir / "copy.jpg").write_bytes(b"x")
+    skip = source_skip_dirs(source, output, run_dir)
+    photos = list_source_photos(source, frozenset({".jpg"}), skip)
+    assert [p.name for p in photos] == ["keep.jpg"]
+
+
+def test_source_skip_dirs_shared_parent_does_not_skip_sibling(tmp_path: Path):
+    shared = tmp_path / "Scrivania"
+    source = shared / "Viaggio_Giappone"
+    source.mkdir(parents=True)
+    (source / "a.jpg").write_bytes(b"x")
+    run_dir = shared / "extraction_Viaggio_Giappone"
+    run_dir.mkdir()
+    (run_dir / "copy.jpg").write_bytes(b"x")
+    skip = source_skip_dirs(source, shared, run_dir)
+    assert skip == frozenset()
+    photos = list_source_photos(source, frozenset({".jpg"}), skip)
+    assert [p.name for p in photos] == ["a.jpg"]
+
+
+def test_source_skip_dirs_when_source_equals_output(tmp_path: Path):
+    source = tmp_path / "foto"
+    source.mkdir()
+    (source / "a.jpg").write_bytes(b"x")
+    run_dir = source / "extraction_foto"
+    run_dir.mkdir()
+    (run_dir / "copy.jpg").write_bytes(b"x")
+    skip = source_skip_dirs(source, source, run_dir)
+    photos = list_source_photos(source, frozenset({".jpg"}), skip)
+    assert [p.name for p in photos] == ["a.jpg"]
+
+
+def test_source_skip_dirs_case_folded_paths_on_insensitive_fs(tmp_path: Path):
+    source = tmp_path / "Foto"
+    source.mkdir()
+    alt = source.parent / "foto"
+    try:
+        same = alt.exists() and os.path.samefile(source, alt)
+    except OSError:
+        same = False
+    if not same:
+        pytest.skip("filesystem is case-sensitive")
+    run_dir = alt / "extraction_Foto"
+    run_dir.mkdir()
+    (source / "keep.jpg").write_bytes(b"x")
+    (run_dir / "copy.jpg").write_bytes(b"x")
+    skip = source_skip_dirs(source, alt, run_dir)
+    photos = list_source_photos(source, frozenset({".jpg"}), skip)
+    assert [p.name for p in photos] == ["keep.jpg"]
+
+
+def test_list_source_photos_does_not_follow_dir_symlink(tmp_path: Path):
+    source = tmp_path / "foto"
+    outside = tmp_path / "outside"
+    source.mkdir()
+    outside.mkdir()
+    (source / "keep.jpg").write_bytes(b"x")
+    (outside / "secret.jpg").write_bytes(b"x")
+    link = source / "alias"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are not available")
+    photos = list_source_photos(source, frozenset({".jpg"}))
+    assert [p.name for p in photos] == ["keep.jpg"]
+
+
+def test_load_config_defaults_group_by_date(tmp_path: Path):
+    env = _write_env(tmp_path, **_valid_values(tmp_path))
+    config = load_config(env)
+    assert config.group_by == "date"
+
+
+def test_load_config_reads_group_by_tree(tmp_path: Path):
+    values = _valid_values(tmp_path)
+    values["GROUP_BY"] = "TREE"
+    env = _write_env(tmp_path, **values)
+    assert load_config(env).group_by == "tree"
+
+
+def test_load_config_invalid_group_by(tmp_path: Path):
+    values = _valid_values(tmp_path)
+    values["GROUP_BY"] = "flat"
+    env = _write_env(tmp_path, **values)
+    with pytest.raises(ConfigError, match="GROUP_BY"):
+        load_config(env)
+
+
+def test_load_config_finds_nested_file(tmp_path: Path):
+    values = _valid_values(tmp_path)
+    source = tmp_path / "foto"
+    for child in source.iterdir():
+        if child.is_file():
+            child.unlink()
+    nested = source / "album"
+    nested.mkdir()
+    (nested / "a.jpg").write_bytes(b"x")
+    env = _write_env(tmp_path, **values)
+    load_config(env)
+    photos = list_source_photos(source.resolve(), frozenset({".jpg"}))
+    assert [p.relative_to(source.resolve()).as_posix() for p in photos] == ["album/a.jpg"]
 
 
 def test_load_config_success(tmp_path: Path):
